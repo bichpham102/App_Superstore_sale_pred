@@ -6,7 +6,7 @@ matplotlib
 
 altair==4.2.0
 protobuf>=3.20.2
-sklearn
+scikit-learn
 statsmodels==0.13.2
 
 cmdstanpy>=1.0.4
