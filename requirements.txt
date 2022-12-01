@@ -10,6 +10,6 @@ wheel>=0.37.0
 altair==4.2.0
 pystan==2.19.1.1
 fbprophet==0.7.1
-protobuf==3.20.1
+protobuf>=3.20.2
 sklearn
 statsmodels==0.13.2
