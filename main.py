@@ -54,7 +54,7 @@ def main():
 	hide_header_footer() 
 
 # get master data predictSuperstoreProfit/Sample - Superstore.csv
-data = pd.read_csv('Sample - Superstore.csv', parse_dates=['Order Date', 'Ship Date']).sort_values(by = ['Order Date','Order ID'])
+data = pd.read_csv('Sample - Superstore.csv', parse_dates=['Order Date', 'Ship Date'],encoding= 'unicode_escape').sort_values(by = ['Order Date','Order ID'])
 
 # navigation dropdown
 app_mode = st.sidebar.selectbox('Select Page',['Background','Superstore Performance'])
