@@ -2,10 +2,10 @@ import numpy as np
 import pandas as pd
 import math
 import itertools
-from prophet import Prophet
-from prophet.diagnostics import cross_validation 
-from prophet.diagnostics import performance_metrics
-from prophet.plot import plot_cross_validation_metric
+from fbprophet import Prophet
+from fbprophet.diagnostics import cross_validation 
+from fbprophet.diagnostics import performance_metrics
+from fbprophet.plot import plot_cross_validation_metric
 import holidays
 
 
