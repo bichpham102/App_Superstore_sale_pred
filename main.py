@@ -21,7 +21,6 @@ from statsmodels.tsa.seasonal import seasonal_decompose
 from statsmodels.tsa.stattools import adfuller 
 import statsmodels.api as sm 
 
-sns.set(style = 'whitegrid') 
 pd.set_option('display.max_rows', 15)
 pd.set_option('display.max_columns', 500) 
 pd.set_option('display.width', 1000) 
