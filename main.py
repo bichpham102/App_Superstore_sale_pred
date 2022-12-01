@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 import math
-import itertools
 from fbprophet import Prophet
 from fbprophet.diagnostics import cross_validation 
 from fbprophet.diagnostics import performance_metrics
@@ -13,7 +12,6 @@ from PIL import Image
 import streamlit as st 
 import base64 #to open .gif files in streamlit app
 from pathlib import Path 
-import seaborn as sns
 from datetime import date, datetime 
 from sklearn.metrics import mean_absolute_error 
 
