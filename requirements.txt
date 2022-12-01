@@ -2,7 +2,7 @@ pandas
 numpy
 datetime
 streamlit
-stan_math
+stan-dev/math
 matplotlib 
 
 altair==4.2.0
