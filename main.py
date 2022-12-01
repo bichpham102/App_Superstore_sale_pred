@@ -68,7 +68,7 @@ if app_mode == 'Background':
 	st.title('🛍️ Welcome to Superstore\'s predictive dashboard!')
 	st.markdown(
 			"""
-		[<img src='data:image/png;base64,{}' class='img-fluid' width=25 height=25>](https://github.com/bichpham102/predictSuperstoreSales) <small> app-predictive-analytics 1.0.0 | Nov 2022</small>""".format(
+		[<img src='data:image/png;base64,{}' class='img-fluid' width=25 height=25>](https://github.com/bichpham102/PredAnalyticsApp_2) <small> app-predictive-analytics 1.0.0 | Nov 2022</small>""".format(
 			img_to_bytes("./images/github.png")
 		),
 		unsafe_allow_html=True,
