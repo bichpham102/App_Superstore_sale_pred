@@ -21,7 +21,7 @@ from statsmodels.tsa.seasonal import seasonal_decompose
 
 pd.set_option('display.max_rows', 15)
 pd.set_option('display.max_columns', 500) 
-pd.set_option('display.width', 1000) 
+pd.set_option('display.width', 800) 
 st.set_option('deprecation.showPyplotGlobalUse', False) 
 
 def img_to_bytes(img_path):
