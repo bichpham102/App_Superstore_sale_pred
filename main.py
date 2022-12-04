@@ -1,25 +1,23 @@
 import numpy as np
 import pandas as pd
 import math
+import altair as alt 
 from prophet import Prophet
 from prophet.diagnostics import cross_validation 
 from prophet.diagnostics import performance_metrics
 from prophet.plot import plot_cross_validation_metric
-import holidays
-
+from prophet.plot import plot_plotly, plot_components_plotly
 
 from PIL import Image
 import streamlit as st 
 import base64 #to open .gif files in streamlit app
 from pathlib import Path 
 from datetime import date, datetime 
+from dateutil.relativedelta import relativedelta
 from sklearn.metrics import mean_absolute_error 
-
 import matplotlib.pyplot as plt 
-
 from statsmodels.tsa.seasonal import seasonal_decompose 
-from statsmodels.tsa.stattools import adfuller 
-import statsmodels.api as sm 
+
 
 pd.set_option('display.max_rows', 15)
 pd.set_option('display.max_columns', 500) 
@@ -31,28 +29,87 @@ def img_to_bytes(img_path):
 	encoded = base64.b64encode(img_bytes).decode() 
 	return encoded 
 
-def main():
-	# increase the width of the text and tables/figures
-	def _max_width_():
-		max_width_str = f"max-width: 1000px"
-		st.markdown(f'''
-				<style> 
-				.reportview-container .main .block-container{{
-					{max_width_str}
-				}}
-				</style>
-			''', unsafe_allow_html=True)
-	# hide Streamlit header and footer 
-	def hide_header_footer(): 
-		hide_streamlit_style = ''''
-				<style> 
-				footer {visibility: hidden;}
-				</style>'''
-		st.markdown(hide_streamlit_style, unsafe_allow_html=True)
-	# run the inner functions 
-	_max_width_() 
-	hide_header_footer() 
+# functions
+@st.experimental_memo
+def get_simple_model(df):
+	# df.columns = ['ds','y']
+	m = Prophet(interval_width=0.95)
+	m.fit(df) 
+	return m 
+	
+@st.experimental_memo(ttl=60 * 60 * 24)
+def comparison_chart(data, title):
+    hover = alt.selection_single(
+        fields=["date"],
+        nearest=True,
+        on="mouseover",
+        empty="none",
+    )
 
+    lines = (
+        alt.Chart(data, title=title)
+        .mark_line()
+        .encode(
+            x="date",
+            y='sales:Q',
+            color="set",
+        )
+    )
+    # Draw points on the line, and highlight based on selection
+    points = lines.transform_filter(hover).mark_circle(size=65)
+
+    # Draw a rule at the location of the selection
+    tooltips = (
+        alt.Chart(data)
+        .mark_rule()
+        .encode(
+            x="date",
+            y='sales:Q',
+            opacity=alt.condition(hover, alt.value(0.3), alt.value(0)),
+            tooltip=[
+                alt.Tooltip("date", title="Date"),
+                alt.Tooltip('sales:Q', title=["Sales ($)"]),
+            ],
+        )
+        .add_selection(hover)
+    )
+
+    return (lines + points + tooltips).interactive()
+
+@st.experimental_memo
+def get_fc_charts(df, start_date, periods):
+	st.write('#### Model predictions')
+	df.columns = ['ds','y']
+	m = get_simple_model(df)
+	future = m.make_future_dataframe(periods=periods, freq = 'MS')
+	forecast = m.predict(future)
+
+	# main chart
+	fig = plot_plotly(m, forecast)
+	fig.update_layout(hovermode="x unified")
+	fig.update_yaxes(title_text='Sales ($)')
+	end_date = datetime.strftime(max_data + relativedelta(months=periods), '%Y-%m-%d').replace(' 0', ' ')
+	fig.update_xaxes(title_text = 'Order Date',range=[start_date,end_date])
+    #component chart
+	fig_comp = plot_components_plotly(m,forecast)
+	fig_comp.update_yaxes(title_text='Sales ($)')
+	fig_comp.update_xaxes(title_text = 'Order Date')
+	st.write(fig, fig_comp)
+	# evaluate the predictions
+	st.write('#### Evaluate model predictions')
+	dates = df['ds'][-periods:].values
+	y_true = df['y'][-periods:].values
+	y_pred = forecast['yhat'][-periods:].values
+	source = pd.DataFrame({'date':dates, 'Actual':y_true,'Predict':y_pred})
+	source.set_index('date', inplace=True)
+	source = source.reset_index().melt('date', var_name='set', value_name='sales')
+	# plot
+	chart = comparison_chart(source, "Simple - Prophet's prediction evaluation")
+	st.altair_chart((chart).interactive(), use_container_width=True)
+	# assess the model with MAE
+	mae = mean_absolute_error(y_true, y_pred)
+	st.success('MAE: %.3f' % mae)
+	 
 # get master data predictSuperstoreProfit/Sample - Superstore.csv
 data = pd.read_csv('Sample - Superstore.csv', parse_dates=['Order Date', 'Ship Date'],encoding= 'unicode_escape').sort_values(by = ['Order Date','Order ID'])
 
@@ -116,7 +173,7 @@ if app_mode == 'Superstore Performance':
 	st.title(' 📊 Superstore\'s Performance Prediction')
 	st.markdown('---')
 
-	# select start_date 
+	# inputs 
 	max_data = max(data['Order Date'])
 	min_data = min(data['Order Date'])
 	start_date = st.date_input(
@@ -125,25 +182,27 @@ if app_mode == 'Superstore Performance':
 		,min_value = min_data
 		,max_value = max_data
 		)
+	periods = st.slider('Pick a period to forcast (months)', 0, 48,24)
 
 	st.subheader(" ")
 
 	# GET DATA  
 	data['Order Date'] = pd.to_datetime(data['Order Date'].apply(lambda x: x.date()) )
-	data['Order Month'] = data['Order Date'].dt.strftime('%Y-%m')
+
 		## OVV
-	df_ovv_1 = data[data['Order Date'] > pd.to_datetime(start_date)][['Order Date','Sales']]
-	df_ovv_1.set_index('Order Date', inplace=True)
-	df_ovv_2 = df_ovv_1.resample('MS').sum()
+	df_ovv_1 = data[['Order Date','Sales']]
+	df_ovv_2 = df_ovv_1.set_index('Order Date')
+	df_ovv_2 = df_ovv_2.resample('MS').sum()
+	df_ovv_3 = df_ovv_2.reset_index().rename({'Order Date':'ds','Sales':'y'})
 		## SEG
-	df_seg_1 = data[data['Order Date'] > pd.to_datetime(start_date)][['Order Date','Segment','Sales']]
+	df_seg_1 = data[['Order Date','Segment','Sales']]
 	df_seg_2 = df_seg_1.groupby(['Order Date','Segment'], as_index=True)['Sales'].sum() 
 	df_seg_3 = pd.DataFrame(df_seg_2.unstack(level = 1)) 
 	df_seg_3 = df_seg_3.resample('MS').sum()
 	df_seg_pie = df_seg_1.groupby(['Segment'], as_index=True)['Sales'].sum() 
 	max_seg_y = round(max(df_seg_3.max())+1000,-3)
 		## CAT
-	df_cat_1 = data[data['Order Date'] > pd.to_datetime(start_date)][['Order Date','Category','Sales']]
+	df_cat_1 = data[['Order Date','Category','Sales']]
 	df_cat_2 = df_cat_1.groupby(['Order Date','Category'], as_index=True)['Sales'].sum() 
 	df_cat_3 = pd.DataFrame(df_cat_2.unstack(level = 1)) 
 	df_cat_3 = df_cat_3.resample('MS').sum()
@@ -157,10 +216,10 @@ if app_mode == 'Superstore Performance':
 	st.write(' ')
 	st.markdown('#### Superstore\'s Monthly Sales Value in $')
 	plt.figure(figsize=(11,4))
-	df_ovv_2.plot()
-	plt.title(f'Superstore\'s Sales value overtime', fontsize=20)
-	plt.ylabel('Sales value in ($)', fontsize=16)
-	st.pyplot()
+	df = df_ovv_2[df_ovv_2.index > pd.to_datetime(start_date)].reset_index()
+	c = alt.Chart(df).mark_line().encode(x='Order Date', y='Sales', tooltip=['Order Date', 'Sales'])
+	st.altair_chart(c, use_container_width=True)
+
 
 	st.write(' ')
 	st.markdown('#### Details')
@@ -210,33 +269,28 @@ if app_mode == 'Superstore Performance':
 
 	with tab2: #forecast
 		tab21, tab22, tab23 = st.tabs(['Total Superstore','by Segment', 'by Category'])
+		
+		with tab22: # segment
+			# create the model 
+			st.write("Forecast use a Simple automated Prophet model")
+			segments = data.Segment.unique()
+			segment_forecast = st.selectbox("Select a Segment:", segments)
+			df = df_seg_3[segment_forecast].reset_index()
+			get_fc_charts(df, start_date=start_date,periods=periods)
 
-		with tab21:
+		with tab23: # category
+			st.write("Forecast use a Simple automated Prophet model")
+			categories = data.Category.unique()
+			category_forecast = st.selectbox("Select a Category:", categories)
+			df = df_cat_3[category_forecast].reset_index()
+			get_fc_charts(df, start_date=start_date,periods=periods)
+
+		with tab21: # overall 
 			df = df_ovv_2.reset_index()
 			df.columns = ['ds','y']
 
 			with st.expander("Simple automated Prophet model"):
-				# create the model 
-				m = Prophet(interval_width=0.95)
-				m.fit(df)
-				# Forcasting into the future
-				future = m.make_future_dataframe(periods=24, freq = 'MS')
-				forecast = m.predict(future)
-				figure = m.plot(forecast, xlabel='Order Date', ylabel='Monthly Sales in $')
-				plt.title('Superstore\'s Monthly Sales in $')
-				st.pyplot()
-				figure3 = m.plot_components(forecast)
-				st.pyplot()
-				# evaluate the prediction on the last 12 months of the dataset
-				y_true = df['y'][-12:].values
-				y_pred = forecast['yhat'][-12:].values
-				plt.plot(y_true, label='Actual')
-				plt.plot(y_pred, label='Predicted')
-				plt.legend()
-				st.pyplot()
-				# assess the model with MAE
-				mae = mean_absolute_error(y_true, y_pred)
-				st.success('MAE: %.3f' % mae)
+				get_fc_charts(df, start_date=start_date,periods=periods)
 			
 			st.success('Simple automated Prophet model produces fairly good predictions but there are quite a gap vs. reality in the first 6 months predicted.\
 				So we also consider Tuning the parameters to see if we can get better resutls. ')
@@ -252,14 +306,12 @@ param_grid = {
 # Generate all combinations of parameters
 all_params = [dict(zip(param_grid.keys(), v)) for v in itertools.product(*param_grid.values())]
 rmses = []  # Store the RMSEs for each params here
-
 # Use cross validation to evaluate all parameters
 for params in all_params:
 	m = Prophet(**params).fit(df)  # Fit model with given params
 	df_cv = cross_validation(m, horizon=12, parallel="processes")
 	df_p = performance_metrics(df_cv, rolling_window=1)
 	rmses.append(df_p['rmse'].values[0])
-
 # Find the best parameters
 tuning_results = pd.DataFrame(all_params)
 tuning_results['rmse'] = rmses
@@ -276,27 +328,39 @@ best_params = all_params[np.argmin(rmses)]
 
 
 			# create prophet model 
+			st.write('#### Model predictions')
 			mae = [] 
 			m = Prophet( seasonality_mode = 'multiplicative'
 						,seasonality_prior_scale = 0.1
 						,changepoint_prior_scale = 0.001
 						)
 			m.fit(df)
-			# Forcasting into the future
-			future = m.make_future_dataframe(periods=24, freq = 'MS')
+			# forecasting 
+			future = m.make_future_dataframe(periods=periods, freq = 'MS')
 			forecast = m.predict(future)
-			figure = m.plot(forecast, xlabel='Order Date', ylabel='Monthly Sales in $')
-			plt.title('Superstore\'s Monthly Sales in $')
-			st.pyplot()
-			figure3 = m.plot_components(forecast)
-			st.pyplot()
-			# evaluate the prediction on the last 12 months of the dataset
-			y_true = df['y'][-12:].values
-			y_pred = forecast['yhat'][-12:].values
-			plt.plot(y_true, label='Actual')
-			plt.plot(y_pred, label='Predicted')
-			plt.legend()
-			st.pyplot()
+
+			# main chart
+			fig = plot_plotly(m, forecast)
+			fig.update_layout(hovermode="x unified")
+			fig.update_yaxes(title_text='Sales ($)')
+			end_date = datetime.strftime(max_data + relativedelta(months=periods), '%Y-%m-%d').replace(' 0', ' ')
+			fig.update_xaxes(title_text = 'Order Date',range=[start_date,end_date])
+			#component chart
+			fig_comp = plot_components_plotly(m,forecast)
+			fig_comp.update_yaxes(title_text='Sales ($)')
+			fig_comp.update_xaxes(title_text = 'Order Date')
+			st.write(fig, fig_comp)
+			# evaluate the predictions
+			st.write('#### Evaluate model predictions')
+			dates = df['ds'][-periods:].values
+			y_true = df['y'][-periods:].values
+			y_pred = forecast['yhat'][-periods:].values
+			source = pd.DataFrame({'date':dates, 'Actual':y_true,'Predict':y_pred})
+			source.set_index('date', inplace=True)
+			source = source.reset_index().melt('date', var_name='set', value_name='sales')
+			# plot
+			chart = comparison_chart(source, "Tuned - Prophet's prediction evaluation")
+			st.altair_chart((chart).interactive(), use_container_width=True)
 			# assess the model with MAE
 			mae = mean_absolute_error(y_true, y_pred)
 			st.success('MAE: %.3f' % mae)
@@ -304,45 +368,3 @@ best_params = all_params[np.argmin(rmses)]
 			st.success('Tuned model produces better fit results than an automated one, as indicated by a lower MAE.')
 
 			
-		with tab22: # segment
-			# create the model 
-			st.write("Forecast use a Simple automated Prophet model")
-			segments = data.Segment.unique()
-			segment_forecast = st.selectbox("Select a Segment:", segments)
-
-			df = df_seg_3[segment_forecast].reset_index()
-			df.columns = ['ds','y']
-			m = Prophet(interval_width=0.95)
-			m.fit(df)
-			# Forcasting into the future
-			future = m.make_future_dataframe(periods=24, freq = 'MS')
-			forecast = m.predict(future)
-			figure = m.plot(forecast, xlabel='Order Date', ylabel='Monthly Sales in $')
-			plt.title(f'{segment_forecast} Segment - Superstore\'s Monthly Sales in $')
-			st.pyplot()
-			figure3 = m.plot_components(forecast)
-			st.pyplot()
-
-		with tab23: # category
-			st.write("Forecast use a Simple automated Prophet model")
-			categories = data.Category.unique()
-			category_forecast = st.selectbox("Select a Category:", categories)
-			
-			df = df_cat_3[category_forecast].reset_index()
-			df.columns = ['ds','y']
-			m = Prophet(interval_width=0.95)
-			m.fit(df)
-			# Forcasting into the future
-			future = m.make_future_dataframe(periods=24, freq = 'MS')
-			forecast = m.predict(future)
-			figure = m.plot(forecast, xlabel='Order Date', ylabel='Monthly Sales in $')
-			plt.title(f'{category_forecast} Category - Superstore\'s Monthly Sales in $')
-			st.pyplot()
-			figure3 = m.plot_components(forecast)
-			st.pyplot()
-
-
-
-		
-	
-
