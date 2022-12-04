@@ -22,3 +22,4 @@ python-dateutil>=2.8.0
 tqdm>=4.36.1
 wheel>=0.37.0
 prophet
+plotly
